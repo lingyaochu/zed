@@ -4662,23 +4662,22 @@ impl LspStore {
     where
         F: FnMut(&lsp::ServerCapabilities) -> bool,
     {
-        let Some(language) = buffer.read(cx).language().cloned() else {
+        let buffer_read = buffer.read(cx);
+        let Some(_language) = buffer_read.language() else {
             return false;
         };
-        let relevant_language_servers = self
-            .languages
-            .lsp_adapters(&language.name())
-            .into_iter()
-            .map(|lsp_adapter| lsp_adapter.name())
-            .collect::<HashSet<_>>();
+
+        let buffer_worktree_id =
+            File::from_dyn(buffer_read.file()).map(|file| file.worktree_id(cx));
+
         self.language_server_statuses
             .iter()
-            .filter_map(|(server_id, server_status)| {
-                relevant_language_servers
-                    .contains(&server_status.name)
-                    .then_some(server_id)
+            .filter(|(_, status)| match (buffer_worktree_id, status.worktree) {
+                (Some(buffer_wt), Some(server_wt)) => buffer_wt == server_wt,
+                (Some(_), None) => true,
+                (None, _) => true,
             })
-            .filter_map(|server_id| self.lsp_server_capabilities.get(server_id))
+            .filter_map(|(server_id, _)| self.lsp_server_capabilities.get(server_id))
             .any(check)
     }
 
@@ -4691,26 +4690,25 @@ impl LspStore {
     where
         F: FnMut(&lsp::LanguageServerName, &lsp::ServerCapabilities) -> bool,
     {
-        let Some(language) = buffer.read(cx).language().cloned() else {
+        let buffer_read = buffer.read(cx);
+        let Some(_language) = buffer_read.language() else {
             return Vec::default();
         };
-        let relevant_language_servers = self
-            .languages
-            .lsp_adapters(&language.name())
-            .into_iter()
-            .map(|lsp_adapter| lsp_adapter.name())
-            .collect::<HashSet<_>>();
+
+        let buffer_worktree_id =
+            File::from_dyn(buffer_read.file()).map(|file| file.worktree_id(cx));
+
         self.language_server_statuses
             .iter()
-            .filter_map(|(server_id, server_status)| {
-                relevant_language_servers
-                    .contains(&server_status.name)
-                    .then_some((server_id, &server_status.name))
+            .filter(|(_, status)| match (buffer_worktree_id, status.worktree) {
+                (Some(buffer_wt), Some(server_wt)) => buffer_wt == server_wt,
+                (Some(_), None) => true,
+                (None, _) => true,
             })
-            .filter_map(|(server_id, server_name)| {
+            .filter_map(|(server_id, status)| {
                 self.lsp_server_capabilities
                     .get(server_id)
-                    .map(|c| (server_id, server_name, c))
+                    .map(|c| (server_id, &status.name, c))
             })
             .filter(|(_, server_name, capabilities)| check(server_name, capabilities))
             .map(|(server_id, _, _)| *server_id)
