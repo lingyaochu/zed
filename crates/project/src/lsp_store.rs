@@ -3872,6 +3872,7 @@ pub struct LanguageServerStatus {
     pub binary: Option<LanguageServerBinary>,
     pub configuration: Option<Value>,
     pub workspace_folders: BTreeSet<Uri>,
+    pub languages: BTreeSet<LanguageName>,
 }
 
 #[derive(Clone, Debug)]
@@ -4665,20 +4666,21 @@ impl LspStore {
         let Some(language) = buffer.read(cx).language().cloned() else {
             return false;
         };
-        let relevant_language_servers = self
-            .languages
-            .lsp_adapters(&language.name())
-            .into_iter()
-            .map(|lsp_adapter| lsp_adapter.name())
-            .collect::<HashSet<_>>();
+        let language_name = language.name();
         self.language_server_statuses
             .iter()
-            .filter_map(|(server_id, server_status)| {
-                relevant_language_servers
-                    .contains(&server_status.name)
-                    .then_some(server_id)
+            .filter(|(_, server_status)| {
+                if server_status.languages.is_empty() {
+                    // Fallback for backward compatibility: use local adapter check
+                    self.languages
+                        .lsp_adapters(&language_name)
+                        .iter()
+                        .any(|adapter| adapter.name() == server_status.name)
+                } else {
+                    server_status.languages.contains(&language_name)
+                }
             })
-            .filter_map(|server_id| self.lsp_server_capabilities.get(server_id))
+            .filter_map(|(server_id, _)| self.lsp_server_capabilities.get(server_id))
             .any(check)
     }
 
@@ -4694,23 +4696,24 @@ impl LspStore {
         let Some(language) = buffer.read(cx).language().cloned() else {
             return Vec::default();
         };
-        let relevant_language_servers = self
-            .languages
-            .lsp_adapters(&language.name())
-            .into_iter()
-            .map(|lsp_adapter| lsp_adapter.name())
-            .collect::<HashSet<_>>();
+        let language_name = language.name();
         self.language_server_statuses
             .iter()
-            .filter_map(|(server_id, server_status)| {
-                relevant_language_servers
-                    .contains(&server_status.name)
-                    .then_some((server_id, &server_status.name))
+            .filter(|(_, server_status)| {
+                if server_status.languages.is_empty() {
+                    // Fallback for backward compatibility: use local adapter check
+                    self.languages
+                        .lsp_adapters(&language_name)
+                        .iter()
+                        .any(|adapter| adapter.name() == server_status.name)
+                } else {
+                    server_status.languages.contains(&language_name)
+                }
             })
-            .filter_map(|(server_id, server_name)| {
+            .filter_map(|(server_id, server_status)| {
                 self.lsp_server_capabilities
                     .get(server_id)
-                    .map(|c| (server_id, server_name, c))
+                    .map(|c| (server_id, &server_status.name, c))
             })
             .filter(|(_, server_name, capabilities)| check(server_name, capabilities))
             .map(|(server_id, _, _)| *server_id)
@@ -8282,6 +8285,11 @@ impl LspStore {
 
         for (server_id, status) in &self.language_server_statuses {
             if let Some(server) = self.language_server_for_id(*server_id) {
+                let language_names: Vec<String> = status
+                    .languages
+                    .iter()
+                    .map(|name| name.to_string())
+                    .collect();
                 downstream_client
                     .send(proto::StartLanguageServer {
                         project_id,
@@ -8289,6 +8297,7 @@ impl LspStore {
                             id: server_id.to_proto(),
                             name: status.name.to_string(),
                             worktree_id: status.worktree.map(|id| id.to_proto()),
+                            language_names,
                         }),
                         capabilities: serde_json::to_string(&server.capabilities())
                             .expect("serializing server LSP capabilities"),
@@ -8331,7 +8340,11 @@ impl LspStore {
                     self.lsp_server_capabilities
                         .insert(server_id, server_capabilities);
                 }
-
+                let languages: BTreeSet<LanguageName> = server
+                    .language_names
+                    .into_iter()
+                    .map(|s| LanguageName::new(&s))
+                    .collect();
                 let name = LanguageServerName::from_proto(server.name);
                 let worktree = server.worktree_id.map(WorktreeId::from_proto);
 
@@ -8363,6 +8376,7 @@ impl LspStore {
                         binary: None,
                         configuration: None,
                         workspace_folders: BTreeSet::new(),
+                        languages,
                     },
                 )
             })
@@ -9381,9 +9395,14 @@ impl LspStore {
                         envelope.payload.capabilities
                     )
                 })?;
+        let server_id = LanguageServerId(server.id as usize);
+        let server_name = LanguageServerName::from_proto(server.name.clone());
+        let languages: BTreeSet<LanguageName> = server
+            .language_names
+            .into_iter()
+            .map(|s| LanguageName::new(&s))
+            .collect();
         lsp_store.update(&mut cx, |lsp_store, cx| {
-            let server_id = LanguageServerId(server.id as usize);
-            let server_name = LanguageServerName::from_proto(server.name.clone());
             lsp_store
                 .lsp_server_capabilities
                 .insert(server_id, server_capabilities);
@@ -9399,6 +9418,7 @@ impl LspStore {
                     binary: None,
                     configuration: None,
                     workspace_folders: BTreeSet::new(),
+                    languages,
                 },
             );
             cx.emit(LspStoreEvent::LanguageServerAdded(
@@ -11418,6 +11438,11 @@ impl LspStore {
             }
         }
 
+        let languages: BTreeSet<LanguageName> = self
+            .as_local()
+            .map(|local| local.lsp_tree.languages_for_server_id(server_id))
+            .unwrap_or_default();
+
         self.language_server_statuses.insert(
             server_id,
             LanguageServerStatus {
@@ -11430,6 +11455,7 @@ impl LspStore {
                 binary: Some(language_server.binary().clone()),
                 configuration: Some(language_server.configuration().clone()),
                 workspace_folders: language_server.workspace_folders(),
+                languages: languages.clone(),
             },
         );
 
@@ -11441,6 +11467,8 @@ impl LspStore {
 
         let server_capabilities = language_server.capabilities();
         if let Some((downstream_client, project_id)) = self.downstream_client.as_ref() {
+            let language_names: Vec<String> =
+                languages.iter().map(|name| name.to_string()).collect();
             downstream_client
                 .send(proto::StartLanguageServer {
                     project_id: *project_id,
@@ -11448,6 +11476,7 @@ impl LspStore {
                         id: server_id.to_proto(),
                         name: language_server.name().to_string(),
                         worktree_id: Some(key.worktree_id.to_proto()),
+                        language_names,
                     }),
                     capabilities: serde_json::to_string(&server_capabilities)
                         .expect("serializing server LSP capabilities"),

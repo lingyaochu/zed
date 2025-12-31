@@ -1350,6 +1350,7 @@ impl ServerInfo {
                 binary: Some(server.binary().clone()),
                 configuration: Some(server.configuration().clone()),
                 workspace_folders: server.workspace_folders(),
+                languages: Default::default(),
             },
         }
     }

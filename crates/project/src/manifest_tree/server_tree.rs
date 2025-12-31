@@ -345,6 +345,24 @@ impl LanguageServerTree {
             .1
             .insert(language_name);
     }
+
+    /// Returns all languages that a given server ID is associated with across all worktrees.
+    pub(crate) fn languages_for_server_id(
+        &self,
+        server_id: LanguageServerId,
+    ) -> BTreeSet<LanguageName> {
+        let mut languages = BTreeSet::new();
+        for servers_for_worktree in self.instances.values() {
+            for nodes in servers_for_worktree.roots.values() {
+                for (node, node_languages) in nodes.values() {
+                    if node.id() == Some(server_id) {
+                        languages.extend(node_languages.iter().cloned());
+                    }
+                }
+            }
+        }
+        languages
+    }
 }
 
 pub(crate) struct ServerTreeRebase {
