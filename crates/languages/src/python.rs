@@ -1358,7 +1358,7 @@ impl ToolchainLister for PythonToolchainProvider {
                 }
             }
             Some(PythonEnvironmentKind::Pixi) => {
-                // The support info is from `pixi shell-hook --help`
+                // The shell support info is from `pixi shell-hook --help`
                 let (shell_name, is_supported) = match shell {
                     ShellKind::Posix => ("bash", true),
                     ShellKind::Fish => ("fish", true),
@@ -1370,9 +1370,10 @@ impl ToolchainLister for PythonToolchainProvider {
                     _ => ("", false),
                 };
                 if is_supported {
+                    let pid = std::process::id();
                     let hook_get_cmd = {
                         if let Some(env_name) = &toolchain.environment.name {
-                            format!("pixi shell-hook -s {shell_name} -e {env_name}")
+                            format!("pixi shell-hook -s {shell_name} -e \"{env_name}\"")
                         } else {
                             format!("pixi shell-hook -s {shell_name}")
                         }
@@ -1384,16 +1385,18 @@ impl ToolchainLister for PythonToolchainProvider {
                             format!("(& {}) | Out-String | Invoke-Expression", hook_get_cmd)
                         }
                         ShellKind::Nushell => {
-                            let temp_file = "pixi_activate.nu";
+                            let temp_file =
+                                format!("($nu.temp-path | path join zed_pixi_{}.nu)", pid);
                             // before source, nushell will check the file exists, so we should separate the command
                             activation_script
                                 .push(format!("{} | save -f {}", hook_get_cmd, temp_file));
                             format!("source {};rm {}", temp_file, temp_file)
                         }
                         ShellKind::Cmd => {
+                            let temp_file = format!("\"%TEMP%\\zed_pixi_{}.bat\"", pid);
                             format!(
-                                "{} > \"%TEMP%\\pixi.bat\" && call \"%TEMP%\\pixi.bat\" && del \"%TEMP%\\pixi.bat\"",
-                                hook_get_cmd
+                                "{} > {} && call {} && del {}",
+                                hook_get_cmd, temp_file, temp_file, temp_file
                             )
                         }
                         ShellKind::Xonsh => format!("execx($({}))", hook_get_cmd),
