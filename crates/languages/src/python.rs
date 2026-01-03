@@ -1387,7 +1387,10 @@ impl ToolchainLister for PythonToolchainProvider {
                             hooks_get_cmd
                         ),
                         ShellKind::Cmd => {
-                            format!("@FOR /F \"tokens=*\" %%i IN ('{}') DO @%%i", hooks_get_cmd)
+                            format!(
+                                "{} > \"%TEMP%\\pixi.bat\" && call \"%TEMP%\\pixi.bat\" && del \"%TEMP%\\pixi.bat\"",
+                                hooks_get_cmd
+                            )
                         }
                         ShellKind::Xonsh => format!("execx($({}))", hooks_get_cmd),
 
