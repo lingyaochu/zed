@@ -1369,7 +1369,7 @@ impl ToolchainLister for PythonToolchainProvider {
                     _ => ("", false),
                 };
                 if is_supported {
-                    let hooks_get_cmd = {
+                    let hook_get_cmd = {
                         if let Some(env_name) = &toolchain.environment.name {
                             format!("pixi shell-hook -s {shell_name} -e {env_name}")
                         } else {
@@ -1377,22 +1377,22 @@ impl ToolchainLister for PythonToolchainProvider {
                         }
                     };
                     let script = match shell {
-                        ShellKind::Posix => format!("eval \"$({})\"", hooks_get_cmd),
-                        ShellKind::Fish => format!("{} | source", hooks_get_cmd),
+                        ShellKind::Posix => format!("eval \"$({})\"", hook_get_cmd),
+                        ShellKind::Fish => format!("{} | source", hook_get_cmd),
                         ShellKind::PowerShell | ShellKind::Pwsh => {
-                            format!("(& {}) | Out-String | Invoke-Expression", hooks_get_cmd)
+                            format!("(& {}) | Out-String | Invoke-Expression", hook_get_cmd)
                         }
                         ShellKind::Nushell => format!(
                             "{} | save -f .pixi_activate.nu; source .pixi_activate.nu; rm .pixi_activate.nu",
-                            hooks_get_cmd
+                            hook_get_cmd
                         ),
                         ShellKind::Cmd => {
                             format!(
                                 "{} > \"%TEMP%\\pixi.bat\" && call \"%TEMP%\\pixi.bat\" && del \"%TEMP%\\pixi.bat\"",
-                                hooks_get_cmd
+                                hook_get_cmd
                             )
                         }
-                        ShellKind::Xonsh => format!("execx($({}))", hooks_get_cmd),
+                        ShellKind::Xonsh => format!("execx($({}))", hook_get_cmd),
 
                         _ => String::new(),
                     };
