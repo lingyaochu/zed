@@ -1358,6 +1358,7 @@ impl ToolchainLister for PythonToolchainProvider {
                 }
             }
             Some(PythonEnvironmentKind::Pixi) => {
+                // The support info is from `pixi shell-hook --help`
                 let (shell_name, is_supported) = match shell {
                     ShellKind::Posix => ("bash", true),
                     ShellKind::Fish => ("fish", true),
@@ -1382,10 +1383,13 @@ impl ToolchainLister for PythonToolchainProvider {
                         ShellKind::PowerShell | ShellKind::Pwsh => {
                             format!("(& {}) | Out-String | Invoke-Expression", hook_get_cmd)
                         }
-                        ShellKind::Nushell => format!(
-                            "{} | save -f .pixi_activate.nu; source .pixi_activate.nu; rm .pixi_activate.nu",
-                            hook_get_cmd
-                        ),
+                        ShellKind::Nushell => {
+                            let temp_file = "pixi_activate.nu";
+                            // before source, nushell will check the file exists, so we should separate the command
+                            activation_script
+                                .push(format!("{} | save -f {}", hook_get_cmd, temp_file));
+                            format!("source {};rm {}", temp_file, temp_file)
+                        }
                         ShellKind::Cmd => {
                             format!(
                                 "{} > \"%TEMP%\\pixi.bat\" && call \"%TEMP%\\pixi.bat\" && del \"%TEMP%\\pixi.bat\"",
