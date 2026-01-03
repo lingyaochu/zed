@@ -1357,6 +1357,45 @@ impl ToolchainLister for PythonToolchainProvider {
                     activation_script.push(format!("{manager} activate base"));
                 }
             }
+            Some(PythonEnvironmentKind::Pixi) => {
+                let (shell_name, is_supported) = match shell {
+                    ShellKind::Posix => ("bash", true),
+                    ShellKind::Fish => ("fish", true),
+                    ShellKind::PowerShell | ShellKind::Pwsh => ("powershell", true),
+                    ShellKind::Nushell => ("nushell", true),
+                    ShellKind::Cmd => ("cmd", true),
+                    ShellKind::Xonsh => ("xonsh", true),
+
+                    _ => ("", false),
+                };
+                if is_supported {
+                    let hooks_get_cmd = {
+                        if let Some(env_name) = &toolchain.environment.name {
+                            format!("pixi shell-hook -s {shell_name} -e {env_name}")
+                        } else {
+                            format!("pixi shell-hook -s {shell_name}")
+                        }
+                    };
+                    let script = match shell {
+                        ShellKind::Posix => format!("eval \"$({})\"", hooks_get_cmd),
+                        ShellKind::Fish => format!("{} | source", hooks_get_cmd),
+                        ShellKind::PowerShell | ShellKind::Pwsh => {
+                            format!("(& {}) | Out-String | Invoke-Expression", hooks_get_cmd)
+                        }
+                        ShellKind::Nushell => format!(
+                            "{} | save -f .pixi_activate.nu; source .pixi_activate.nu; rm .pixi_activate.nu",
+                            hooks_get_cmd
+                        ),
+                        ShellKind::Cmd => {
+                            format!("@FOR /F \"tokens=*\" %%i IN ('{}') DO @%%i", hooks_get_cmd)
+                        }
+                        ShellKind::Xonsh => format!("execx($({}))", hooks_get_cmd),
+
+                        _ => String::new(),
+                    };
+                    activation_script.push(script);
+                }
+            }
             Some(
                 PythonEnvironmentKind::Venv
                 | PythonEnvironmentKind::VirtualEnv
