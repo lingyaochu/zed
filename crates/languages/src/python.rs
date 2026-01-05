@@ -1358,7 +1358,6 @@ impl ToolchainLister for PythonToolchainProvider {
                     activation_script.push(format!("{manager} activate base"));
                 }
             }
-<<<<<<< HEAD
             Some(PythonEnvironmentKind::Pixi) => {
                 // The shell support info is from `pixi shell-hook --help`
                 let (shell_name, is_supported) = match shell {
