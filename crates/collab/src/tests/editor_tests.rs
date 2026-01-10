@@ -37,6 +37,7 @@ use std::{
     collections::BTreeSet,
     ops::{Deref as _, Range},
     path::{Path, PathBuf},
+    str::FromStr,
     sync::{
         Arc,
         atomic::{self, AtomicBool, AtomicUsize},
@@ -4752,6 +4753,101 @@ async fn test_remote_project_worktree_trust(cx_a: &mut TestAppContext, cx_b: &mu
         !has_restricted_worktrees(&project_b, cx_b),
         "remote client should still be trusted"
     );
+}
+
+#[gpui::test]
+#[cfg(target_os = "windows")]
+async fn test_inlay_hint_navigation_with_remote_uri(
+    cx_a: &mut TestAppContext,
+    cx_b: &mut TestAppContext,
+) {
+    let mut server = TestServer::start(cx_a.executor()).await;
+    let executor = cx_a.executor();
+    let client_a = server.create_client(cx_a, "user_a").await;
+    let client_b = server.create_client(cx_b, "user_b").await;
+    server
+        .create_room(&mut [(&client_a, cx_a), (&client_b, cx_b)])
+        .await;
+
+    let active_call_a = cx_a.read(ActiveCall::global);
+
+    cx_a.update(editor::init);
+    cx_b.update(editor::init);
+
+    client_a.language_registry().add(rust_lang());
+    let capabilities = lsp::ServerCapabilities {
+        inlay_hint_provider: Some(lsp::OneOf::Left(true)),
+        ..Default::default()
+    };
+
+    let mut fake_servers = client_a.language_registry().register_fake_lsp(
+        "Rust",
+        FakeLspAdapter {
+            capabilities,
+            ..Default::default()
+        },
+    );
+
+    client_a
+        .fs()
+        .insert_tree(
+            path!("/home/user/project"),
+            json!({
+                "main.rs": "fn main() {}",
+                "types.rs": "pub struct Foo;"
+            }),
+        )
+        .await;
+
+    let (project_a, worktree_id) = client_a
+        .build_local_project(path!("/home/user/project"), cx_a)
+        .await;
+
+    let project_id = active_call_a
+        .update(cx_a, |call, cx| call.share_project(project_a.clone(), cx))
+        .await
+        .unwrap();
+
+    let project_b = client_b.join_remote_project(project_id, cx_b).await;
+
+    let (workspace_a, cx_a) = client_a.build_workspace(&project_a, cx_a);
+    let _editor_a = workspace_a
+        .update_in(cx_a, |workspace, window, cx| {
+            workspace.open_path((worktree_id, rel_path("main.rs")), None, true, window, cx)
+        })
+        .await
+        .unwrap();
+
+    let _fake_server = fake_servers.next().await.unwrap();
+
+    executor.run_until_parked();
+
+    let server_id = project_a.read_with(cx_a, |project, cx| {
+        let lsp_store = project.lsp_store().read(cx);
+        let (id, _) = lsp_store.language_server_statuses().next().unwrap();
+        id
+    });
+
+    let result = project_b
+        .update(cx_b, |project, cx| {
+            project.open_local_buffer_via_lsp(
+                lsp::Uri::from_str("file:///home/user/project/types.rs").unwrap(),
+                server_id,
+                cx,
+            )
+        })
+        .await;
+
+    assert!(
+        result.is_ok(),
+        "Should handle Linux-style path on guest: {:?}",
+        result.err()
+    );
+
+    let buffer = result.unwrap();
+    buffer.read_with(cx_b, |buffer, _| {
+        assert_eq!(buffer.text(), "pub struct Foo;")
+    });
 }
 
 fn blame_entry(sha: &str, range: Range<u32>) -> git::blame::BlameEntry {
