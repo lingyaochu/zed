@@ -264,7 +264,9 @@ impl Render for TitleBar {
                 let display_name = if identity.extension() == Some(std::ffi::OsStr::new("git")) {
                     identity.file_stem()
                 } else {
-                    identity.file_name()
+                    repo.path_style
+                        .file_name(identity)
+                        .map(|n| std::ffi::OsStr::new(n))
                 };
 
                 if let Some(repo_name) = display_name.and_then(|n| n.to_str()) {
