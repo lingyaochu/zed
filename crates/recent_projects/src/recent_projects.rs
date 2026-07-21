@@ -141,6 +141,7 @@ pub async fn get_recent_projects(
         .collect();
     all_paths.sort_unstable();
     all_paths.dedup();
+    log::info!("Recent projects are: {:?}", all_paths);
     let path_details =
         util::disambiguate::compute_disambiguation_details(&all_paths, |path, detail| {
             project::path_suffix(path, detail)
