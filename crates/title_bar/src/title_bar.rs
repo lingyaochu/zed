@@ -259,7 +259,7 @@ impl Render for TitleBar {
                             .flatten()
                     });
 
-                let identity = repo_identity_path(&repo.common_dir_abs_path);
+                let identity = repo_identity_path(&repo.common_dir_abs_path, repo.path_style);
 
                 let display_name = if identity.extension() == Some(std::ffi::OsStr::new("git")) {
                     identity.file_stem()
