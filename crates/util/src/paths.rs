@@ -3448,4 +3448,105 @@ mod tests {
             Ok(PathBuf::from("C:\\Users\\file.txt"))
         );
     }
+
+    #[test]
+    fn test_unix_path_style_file_name() {
+        let unix_path_style = PathStyle::Unix;
+
+        let unix_paths = vec![
+            Path::new("/usr/bin/"),
+            Path::new("tmp/foo.txt"),
+            Path::new("foo.txt/."),
+            Path::new("foo.txt/.//"),
+            Path::new("foo.txt/.."),
+            Path::new("/"),
+        ];
+
+        let expected_unix_file_names = vec![
+            Some("bin"),
+            Some("foo.txt"),
+            Some("foo.txt"),
+            Some("foo.txt"),
+            None,
+            None,
+        ];
+
+        for (path, expected) in unix_paths.iter().zip(expected_unix_file_names.iter()) {
+            assert_eq!(unix_path_style.file_name(path), *expected);
+        }
+    }
+
+    #[test]
+    fn test_windows_path_style_file_name() {
+        let windows_path_style = PathStyle::Windows;
+
+        let windows_paths = vec![
+            Path::new(r"C:\\usr\\bin\\"),
+            Path::new(r"tmp\\foo.txt"),
+            Path::new(r"foo.txt\\."),
+            Path::new(r"foo.txt\\.\\\\"),
+            Path::new(r"foo.txt\\.."),
+            Path::new(r"C:\\"),
+            Path::new("tmp/foo.txt"),
+        ];
+
+        let expected_windows_file_names = vec![
+            Some("bin"),
+            Some("foo.txt"),
+            Some("foo.txt"),
+            Some("foo.txt"),
+            None,
+            None,
+            Some("foo.txt"),
+        ];
+
+        for (path, expected) in windows_paths.iter().zip(expected_windows_file_names.iter()) {
+            assert_eq!(windows_path_style.file_name(path), *expected);
+        }
+    }
+
+    #[test]
+    fn test_unix_path_style_parent() {
+        let unix_path_style = PathStyle::Unix;
+        let unix_paths = [
+            ("/foo/bar", Some("/foo")),
+            ("/foo", Some("/")),
+            ("/", None),
+            ("foo/bar", Some("foo")),
+            ("foo", Some("")),
+            (".", Some("")),
+            ("..", Some("")),
+        ];
+
+        for (path, expected) in unix_paths {
+            assert_eq!(
+                unix_path_style.parent(Path::new(path)),
+                expected.map(Path::new)
+            );
+        }
+    }
+
+    #[test]
+    fn test_windows_path_style_parent() {
+        let windows_path_style = PathStyle::Windows;
+        let windows_paths = [
+            (r"C:\foo\bar", Some(r"C:\foo")),
+            (r"C:\foo", Some(r"C:\")),
+            (r"C:\", None),
+            (r"\foo", Some(r"\")),
+            (r"\", None),
+            (r"foo\bar", Some("foo")),
+            ("foo/bar", Some("foo")),
+            ("foo", Some("")),
+            (".", Some("")),
+            ("..", Some("")),
+        ];
+
+        for (path, expected) in windows_paths {
+            assert_eq!(
+                windows_path_style.parent(Path::new(path)),
+                expected.map(Path::new)
+            );
+        }
+    }
 }

@@ -238,6 +238,60 @@ impl PathStyle {
         )
     }
 
+    pub fn file_name<'a>(self, path: &'a Path) -> Option<&'a str> {
+        for component in path.to_str()?.rsplit(self.separators_ch()) {
+            match component {
+                "" | "." => {}
+                ".." => return None,
+                file_name
+                    if self.is_windows()
+                        && file_name.len() == 2
+                        && file_name.as_bytes()[0].is_ascii_alphabetic()
+                        && file_name.as_bytes()[1] == b':' =>
+                {
+                    return None;
+                }
+                file_name => return Some(file_name),
+            }
+        }
+        None
+    }
+
+    pub fn parent<'a>(self, path: &'a Path) -> Option<&'a Path> {
+        let path = path.to_str()?;
+        if path.is_empty() {
+            return None;
+        }
+
+        let path = path.trim_end_matches(self.separators_ch());
+        if path.is_empty()
+            || self.is_windows()
+                && path.len() == 2
+                && path.as_bytes()[0].is_ascii_alphabetic()
+                && path.as_bytes()[1] == b':'
+        {
+            return None;
+        }
+
+        let Some(separator_position) =
+            path.rfind(|character| self.separators_ch().contains(&character))
+        else {
+            return Some(Path::new(""));
+        };
+        let parent = path[..separator_position].trim_end_matches(self.separators_ch());
+
+        if parent.is_empty()
+            || self.is_windows()
+                && parent.len() == 2
+                && parent.as_bytes()[0].is_ascii_alphabetic()
+                && parent.as_bytes()[1] == b':'
+        {
+            Some(Path::new(&path[..=separator_position]))
+        } else {
+            Some(Path::new(parent))
+        }
+    }
+
     pub fn strip_prefix<'a>(
         &self,
         child: &'a Path,
