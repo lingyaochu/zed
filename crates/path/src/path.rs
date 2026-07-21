@@ -238,7 +238,7 @@ impl PathStyle {
         )
     }
 
-    pub fn file_name<'a>(self, path: &'a Path) -> Option<&'a str> {
+    pub fn file_name(self, path: &Path) -> Option<&str> {
         for component in path.to_str()?.rsplit(self.separators_ch()) {
             match component {
                 "" | "." => {}
@@ -257,7 +257,7 @@ impl PathStyle {
         None
     }
 
-    pub fn parent<'a>(self, path: &'a Path) -> Option<&'a Path> {
+    pub fn parent(self, path: &Path) -> Option<&Path> {
         let path = path.to_str()?;
         if path.is_empty() {
             return None;

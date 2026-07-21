@@ -3453,26 +3453,17 @@ mod tests {
     fn test_unix_path_style_file_name() {
         let unix_path_style = PathStyle::Unix;
 
-        let unix_paths = vec![
-            Path::new("/usr/bin/"),
-            Path::new("tmp/foo.txt"),
-            Path::new("foo.txt/."),
-            Path::new("foo.txt/.//"),
-            Path::new("foo.txt/.."),
-            Path::new("/"),
+        let unix_paths_filenames = [
+            (Path::new("/usr/bin/"), Some("bin")),
+            (Path::new("tmp/foo.txt"), Some("foo.txt")),
+            (Path::new("foo.txt/."), Some("foo.txt")),
+            (Path::new("foo.txt/.//"), Some("foo.txt")),
+            (Path::new("foo.txt/.."), None),
+            (Path::new("/"), None),
         ];
 
-        let expected_unix_file_names = vec![
-            Some("bin"),
-            Some("foo.txt"),
-            Some("foo.txt"),
-            Some("foo.txt"),
-            None,
-            None,
-        ];
-
-        for (path, expected) in unix_paths.iter().zip(expected_unix_file_names.iter()) {
-            assert_eq!(unix_path_style.file_name(path), *expected);
+        for (path, filename) in unix_paths_filenames.iter() {
+            assert_eq!(unix_path_style.file_name(path), *filename);
         }
     }
 
@@ -3480,28 +3471,18 @@ mod tests {
     fn test_windows_path_style_file_name() {
         let windows_path_style = PathStyle::Windows;
 
-        let windows_paths = vec![
-            Path::new(r"C:\\usr\\bin\\"),
-            Path::new(r"tmp\\foo.txt"),
-            Path::new(r"foo.txt\\."),
-            Path::new(r"foo.txt\\.\\\\"),
-            Path::new(r"foo.txt\\.."),
-            Path::new(r"C:\\"),
-            Path::new("tmp/foo.txt"),
+        let windows_paths_filenames = [
+            (Path::new(r"C:\\usr\\bin\\"), Some("bin")),
+            (Path::new(r"tmp\\foo.txt"), Some("foo.txt")),
+            (Path::new(r"foo.txt\\."), Some("foo.txt")),
+            (Path::new(r"foo.txt\\.\\\\"), Some("foo.txt")),
+            (Path::new(r"foo.txt\\.."), None),
+            (Path::new(r"C:\\"), None),
+            (Path::new("tmp/foo.txt"), Some("foo.txt")),
         ];
 
-        let expected_windows_file_names = vec![
-            Some("bin"),
-            Some("foo.txt"),
-            Some("foo.txt"),
-            Some("foo.txt"),
-            None,
-            None,
-            Some("foo.txt"),
-        ];
-
-        for (path, expected) in windows_paths.iter().zip(expected_windows_file_names.iter()) {
-            assert_eq!(windows_path_style.file_name(path), *expected);
+        for (path, filename) in windows_paths_filenames.iter() {
+            assert_eq!(windows_path_style.file_name(path), *filename);
         }
     }
 
