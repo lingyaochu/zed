@@ -612,6 +612,24 @@ mod tests {
     }
 
     #[test]
+    fn validates_windows_unc_trust_scope() {
+        let project = Path::new(r"\\server\share\projects\zed");
+        let style = PathStyle::Windows;
+
+        assert_eq!(
+            validate_trust_scope(r"\\server\share", project, None, style).unwrap(),
+            PathBuf::from(r"\\server\share"),
+        );
+        assert_eq!(
+            validate_trust_scope("//server/share/projects", project, None, style).unwrap(),
+            PathBuf::from(r"\\server\share\projects"),
+        );
+        assert!(validate_trust_scope(r"\\server", project, None, style).is_err());
+        assert!(validate_trust_scope(r"\\", project, None, style).is_err());
+        assert!(validate_trust_scope(r"\\server\other", project, None, style).is_err());
+    }
+
+    #[test]
     fn rejects_windows_style_non_ancestor() {
         let project = Path::new(r"C:\Users\me\dev\wt\t1");
         let style = PathStyle::Windows;

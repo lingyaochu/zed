@@ -437,6 +437,37 @@ impl PathStyle {
         if parent.is_empty() {
             return RelPath::new(child, *self).ok();
         }
+
+        if self.is_windows() {
+            const UNC_PREFIX_LENGTH: usize = 2;
+            const VERBATIM_PREFIX: &[u8] = br"\\?\";
+            const DEVICE_PREFIX: &[u8] = br"\\.\";
+
+            let parent_bytes = parent.as_bytes();
+            let is_separator = |byte: u8| byte == b'/' || byte == b'\\';
+            let has_unc_prefix = parent_bytes
+                .get(..UNC_PREFIX_LENGTH)
+                .is_some_and(|prefix| prefix.iter().all(|byte| is_separator(*byte)));
+
+            if has_unc_prefix
+                && !parent_bytes.starts_with(VERBATIM_PREFIX)
+                && !parent_bytes.starts_with(DEVICE_PREFIX)
+            {
+                let component_end = |component_start: usize| {
+                    parent_bytes
+                        .get(component_start..)
+                        .and_then(|remainder| remainder.iter().position(|byte| is_separator(*byte)))
+                        .map_or(parent_bytes.len(), |position| component_start + position)
+                };
+                let server_end = component_end(UNC_PREFIX_LENGTH);
+                let share_start = server_end.saturating_add(1).min(parent_bytes.len());
+                let share_end = component_end(share_start);
+                if server_end == UNC_PREFIX_LENGTH || share_end == share_start {
+                    return None;
+                }
+            }
+        }
+
         let parent = self
             .separators()
             .iter()
@@ -677,6 +708,19 @@ mod tests {
                 "C:\\a\\b/",
                 Some(rel_path("c").into_arc()),
             ),
+            (
+                PathStyle::Windows,
+                r"\\server\share\proj",
+                r"\\server\share",
+                Some(rel_path("proj").into_arc()),
+            ),
+            (
+                PathStyle::Windows,
+                r"\\server\share\proj",
+                r"\\server",
+                None,
+            ),
+            (PathStyle::Windows, r"\\server\share\proj", r"\\", None),
         ];
         let actual = expected.clone().map(|(style, child, parent, _)| {
             (
