@@ -287,6 +287,7 @@ impl TrustedWorktreesStore {
         let mut new_trusted_single_file_worktrees = HashSet::default();
         let mut new_trusted_other_worktrees = HashSet::default();
         let mut new_trusted_abs_paths = HashSet::default();
+        let path_style = worktree_store.read(cx).path_style();
         for trusted_path in trusted_paths.iter().chain(
             self.trusted_paths
                 .remove(&weak_worktree_store)
@@ -340,9 +341,11 @@ impl TrustedWorktreesStore {
         }
 
         new_trusted_other_worktrees.retain(|(worktree_abs_path, _)| {
-            new_trusted_abs_paths
-                .iter()
-                .all(|new_trusted_path| !worktree_abs_path.starts_with(new_trusted_path))
+            new_trusted_abs_paths.iter().all(|new_trusted_path| {
+                path_style
+                    .strip_prefix(&worktree_abs_path, &new_trusted_path)
+                    .is_none()
+            })
         });
         if !new_trusted_other_worktrees.is_empty() {
             new_trusted_single_file_worktrees.clear();
@@ -369,7 +372,9 @@ impl TrustedWorktreesStore {
                     let restricted_worktree_path = worktree.read(cx).abs_path();
                     let retain = (!is_file || new_trusted_other_worktrees.is_empty())
                         && new_trusted_abs_paths.iter().all(|new_trusted_path| {
-                            !restricted_worktree_path.starts_with(new_trusted_path)
+                            path_style
+                                .strip_prefix(&restricted_worktree_path, &new_trusted_path)
+                                .is_none()
                         });
                     if !retain {
                         trusted_paths.insert(PathTrust::Worktree(*restricted_worktree));
@@ -504,16 +509,22 @@ impl TrustedWorktreesStore {
         // See module documentation for details on trust level.
         if let Some(trusted_paths) = self.trusted_paths.get(&weak_worktree_store) {
             let auto_trusted = worktree_store.read_with(cx, |worktree_store, cx| {
+                let path_style = worktree_store.path_style();
                 trusted_paths.iter().any(|trusted_path| match trusted_path {
                     PathTrust::Worktree(worktree_id) => worktree_store
                         .worktree_for_id(*worktree_id, cx)
                         .is_some_and(|worktree| {
                             let worktree = worktree.read(cx);
-                            worktree_path.starts_with(&worktree.abs_path())
+                            path_style
+                                .strip_prefix(&worktree_path, &worktree.abs_path())
+                                .is_some()
                                 || (is_file && !worktree.is_single_file())
                         }),
                     PathTrust::AbsPath(trusted_path) => {
-                        is_file || worktree_path.starts_with(trusted_path)
+                        is_file
+                            || path_style
+                                .strip_prefix(&worktree_path, &trusted_path)
+                                .is_some()
                     }
                 })
             });
