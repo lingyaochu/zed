@@ -10849,7 +10849,7 @@ pub fn worktrees_directory_for_repo(
     // Also check for leading `/` or `\` explicitly, because on Windows
     // `Path::is_absolute()` requires a drive letter — so `/tmp/worktrees`
     // would slip through even though it's clearly not a relative path.
-    if path_style.is_absolute(worktree_directory_setting)
+    if path_style.has_root(Path::new(worktree_directory_setting))
         || worktree_directory_setting.starts_with('\\')
     {
         anyhow::bail!(

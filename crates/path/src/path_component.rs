@@ -248,7 +248,7 @@ impl<'a> Components<'a> {
         unsafe { Path::new(OsStr::from_encoded_bytes_unchecked(comps.path)) }
     }
 
-    fn has_root(&self) -> bool {
+    pub(crate) fn has_root(&self) -> bool {
         if self.has_physical_root {
             return true;
         }

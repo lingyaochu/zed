@@ -1,5 +1,6 @@
 use anyhow::{Context as _, Result, ensure};
 use diffy::{Line, Patch};
+use std::path::Path;
 use util::paths::PathStyle;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -94,7 +95,7 @@ fn patch_path(path: Option<&str>, prefix: &str) -> Result<Option<String>> {
     }
     let path = path.strip_prefix(prefix).unwrap_or(path);
     ensure!(
-        PathStyle::Windows.is_absolute(path),
+        PathStyle::Windows.has_root(Path::new(path)),
         "patch path must be absolute: {path}"
     );
     ensure!(!path.contains('\0'), "patch path contains NUL");

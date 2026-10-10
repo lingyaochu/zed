@@ -72,7 +72,7 @@ impl RelPath {
             path = prefix;
         }
 
-        if path_style.is_absolute(&path) {
+        if path_style.has_root(Path::new(&path)) {
             return Err(anyhow!("absolute path not allowed: {path:?}"));
         }
 

@@ -525,7 +525,8 @@ impl StackFrameList {
                 .filter(|path| {
                     // Since we do not know if we are debugging on the host or (a remote/WSL) target,
                     // we need to check if either the path is absolute as Posix or Windows.
-                    PathStyle::Unix.is_absolute(path) || PathStyle::Windows.is_absolute(path)
+                    let path = Path::new(path);
+                    PathStyle::Unix.has_root(path) || PathStyle::Windows.has_root(path)
                 })
                 .map(|path| Arc::<Path>::from(Path::new(path)))
         })

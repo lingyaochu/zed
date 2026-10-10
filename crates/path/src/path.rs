@@ -103,17 +103,8 @@ impl PathStyle {
         }
     }
 
-    pub fn is_absolute(&self, path_like: &str) -> bool {
-        path_like.starts_with('/')
-            || *self == PathStyle::Windows
-                && (path_like.starts_with('\\')
-                    || path_like
-                        .chars()
-                        .next()
-                        .is_some_and(|c| c.is_ascii_alphabetic())
-                        && path_like[1..]
-                            .strip_prefix(':')
-                            .is_some_and(|path| path.starts_with('/') || path.starts_with('\\')))
+    pub fn has_root(&self, path: &Path) -> bool {
+        self.components(path).has_root()
     }
 
     pub fn is_windows(&self) -> bool {
@@ -125,10 +116,11 @@ impl PathStyle {
     }
 
     pub fn join(self, left: impl AsRef<Path>, right: impl AsRef<Path>) -> Option<String> {
-        let right = right.as_ref().to_str()?;
-        if self.is_absolute(right) {
+        let right = right.as_ref();
+        if self.has_root(right) {
             return None;
         }
+        let right = right.to_str()?;
         let left = left.as_ref().to_str()?;
         if left.is_empty() {
             Some(right.into())

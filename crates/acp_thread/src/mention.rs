@@ -94,7 +94,7 @@ impl MentionUri {
             Ok(())
         };
 
-        if path_style.is_absolute(input) && !input.contains("://") {
+        if path_style.has_root(Path::new(input)) && !input.contains("://") {
             return parse_absolute_path(input)
                 .with_context(|| format!("Invalid absolute path mention URI: {input}"));
         }
@@ -634,7 +634,7 @@ fn bare_path_target(input: &str, path_style: PathStyle) -> Option<&str> {
         .strip_prefix('`')
         .and_then(|input| input.strip_suffix('`'))
         .unwrap_or(input);
-    (path_style.is_absolute(input) && !input.contains("://")).then_some(input)
+    (path_style.has_root(Path::new(input)) && !input.contains("://")).then_some(input)
 }
 
 fn split_path_fragment(input: &str) -> (&str, Option<&str>) {

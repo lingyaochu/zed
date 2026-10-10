@@ -4972,7 +4972,7 @@ impl Project {
         buffer: &Entity<Buffer>,
         cx: &mut Context<Self>,
     ) -> Task<Option<ResolvedPath>> {
-        if self.path_style(cx).is_absolute(path) || path.starts_with("~") {
+        if self.path_style(cx).has_root(Path::new(path)) || path.starts_with("~") {
             self.resolve_abs_path(path, cx)
         } else {
             self.resolve_path_in_worktrees(path, buffer, cx)
@@ -5421,7 +5421,7 @@ impl Project {
         let path = path.as_ref();
         let worktree_store = self.worktree_store.read(cx);
 
-        if path_style.is_absolute(&path.to_string_lossy()) {
+        if path_style.has_root(path) {
             for worktree in worktree_store.visible_worktrees(cx) {
                 let worktree_abs_path = worktree.read(cx).abs_path();
 

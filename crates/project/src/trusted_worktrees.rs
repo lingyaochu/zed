@@ -317,10 +317,7 @@ impl TrustedWorktreesStore {
                 }
                 PathTrust::AbsPath(abs_path) => {
                     debug_assert!(
-                        worktree_store
-                            .read(cx)
-                            .path_style()
-                            .is_absolute(&abs_path.to_string_lossy()),
+                        worktree_store.read(cx).path_style().has_root(&abs_path),
                         "Cannot trust non-absolute path {abs_path:?} on path style {style:?}",
                         style = worktree_store.read(cx).path_style()
                     );
