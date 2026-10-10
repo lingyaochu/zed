@@ -103,6 +103,13 @@ impl PathStyle {
         }
     }
 
+    pub fn is_absolute(&self, path: &Path) -> bool {
+        match self {
+            PathStyle::Unix => self.has_root(path),
+            PathStyle::Windows => self.has_root(path) && self.components(path).prefix().is_some(),
+        }
+    }
+
     pub fn has_root(&self, path: &Path) -> bool {
         self.components(path).has_root()
     }
