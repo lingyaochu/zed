@@ -11,7 +11,7 @@ use anyhow::Context;
 #[cfg(all(unix, not(target_family = "wasm")))]
 use std::os::unix::prelude::OsStrExt;
 use std::{
-    ffi::OsStr,
+    ffi::{OsStr, OsString},
     path::{Path, PathBuf},
 };
 #[cfg(windows)]
@@ -166,6 +166,13 @@ impl PathStyle {
         let mut buf = left.as_ref().to_path_buf();
         buf.styled_push(right, self);
         buf
+    }
+
+    /// Rewrites the separators of `path` to this style's primary separator.
+    ///
+    /// non-leading `.` components are also removed; `..` is preserved.
+    pub fn normalize_separators(self, path: impl AsRef<Path>) -> PathBuf {
+        self.collect_components(self.components(path.as_ref()))
     }
 
     pub fn join_path_preserving_components(
@@ -383,6 +390,43 @@ impl PathStyle {
         };
         !path.is_empty() && self.is_sep_byte(path[0])
     }
+
+    /// Collects `components` into a `PathBuf`, replacing std's
+    /// `impl<P: AsRef<Path>> FromIterator<P> for PathBuf` (which is implemented
+    /// in terms of `PathBuf::push`) with a [`PathStyle`]-aware version.
+    ///
+    /// Unlike std's implementation, this appends each component's raw `OsStr`
+    /// rather than pushing it as a standalone path. That distinction matters for
+    /// Windows verbatim paths: `\\?\C:\a/b` has a single `Normal("a/b")`
+    /// component (rust-lang/rust#161661), but pushing that component would
+    /// re-parse it and turn the slash into a separator. std's `FromIterator`
+    /// and `normalize_lexically` both go through `PathBuf::push`, so they do not
+    /// preserve this component boundary.
+    fn collect_components<'a>(
+        self,
+        components: impl IntoIterator<Item = Component<'a>>,
+    ) -> PathBuf {
+        let mut result = OsString::new();
+        let mut need_sep = false;
+
+        for component in components {
+            match component {
+                Component::Prefix(_) | Component::RootDir => {
+                    result.push(component.as_os_str(self));
+                    need_sep = false;
+                }
+                _ => {
+                    if need_sep {
+                        result.push(self.main_separator_str());
+                    }
+                    result.push(component.as_os_str(self));
+                    need_sep = true;
+                }
+            }
+        }
+
+        PathBuf::from(result)
+    }
 }
 
 /// Normalizes a path by resolving `.` and `..` components without
@@ -477,6 +521,78 @@ mod tests {
                 "{path_style:?}: joining {path:?} onto {base:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_normalize_separators() {
+        let cases = [
+            (PathStyle::Unix, "/home//user/./dev/", "/home/user/dev"),
+            (PathStyle::Unix, r"a\b/c", r"a\b/c"),
+            (PathStyle::Unix, "/", "/"),
+            (PathStyle::Unix, "", ""),
+            (PathStyle::Unix, "..", ".."),
+            (PathStyle::Windows, "/foo//bar/baz/", r"\foo\bar\baz"),
+            (PathStyle::Windows, "C:/Users/user", r"C:\Users\user"),
+            (PathStyle::Windows, r"C:\Users/user", r"C:\Users\user"),
+            (PathStyle::Windows, "C:", "C:"),
+            (PathStyle::Windows, "C:/", "C:\\"),
+            (PathStyle::Windows, r"C:..\foo", r"C:..\foo"),
+            // Non-verbatim UNC prefixes have an implicit root, so collecting
+            // components materializes the trailing separator.
+            (PathStyle::Windows, r"\\server\share", r"\\server\share\"),
+            (
+                PathStyle::Windows,
+                r"\\server\share/foo",
+                r"\\server\share\foo",
+            ),
+            // Verbatim drive prefixes are not treated as drives when a child
+            // component is appended, matching `PathBuf::push`.
+            (PathStyle::Windows, r"\\?\C:foo", r"\\?\C:foo"),
+            // After a drive letter in a verbatim path, `/` is a regular
+            // filename character rather than a separator (rust-lang/rust#161661),
+            // so it must be preserved both in the prefix and in components.
+            (PathStyle::Windows, r"\\?\C:/foo", r"\\?\C:/foo"),
+            (PathStyle::Windows, r"\\?\C:\a/b", r"\\?\C:\a/b"),
+            (
+                PathStyle::Windows,
+                r"\\?\UNC\server\share/foo",
+                r"\\?\UNC\server\share/foo",
+            ),
+            (PathStyle::Windows, "./foo", r".\foo"),
+            (PathStyle::Windows, "a/../b", r"a\..\b"),
+        ];
+
+        for (path_style, input, expected) in cases {
+            assert_eq!(
+                path_style.normalize_separators(input),
+                PathBuf::from(expected),
+                "{path_style:?}: normalizing {input:?}"
+            );
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_normalize_separators_preserves_non_utf8() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let input = Path::new(OsStr::from_bytes(b"/a/\xff//b/"));
+        assert_eq!(
+            PathStyle::Unix
+                .normalize_separators(input)
+                .as_os_str()
+                .as_bytes(),
+            b"/a/\xff/b"
+        );
+
+        let input = Path::new(OsStr::from_bytes(b"a/\xff/b"));
+        assert_eq!(
+            PathStyle::Windows
+                .normalize_separators(input)
+                .as_os_str()
+                .as_bytes(),
+            b"a\\\xff\\b"
+        );
     }
 
     // Cases ported from `test_push` in rust-lang/rust's `library/std/tests/path.rs`.
