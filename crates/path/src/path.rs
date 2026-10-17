@@ -81,7 +81,7 @@ impl PathStyle {
     }
 
     #[inline]
-    pub fn primary_separator(&self) -> &'static str {
+    pub fn main_separator_str(&self) -> &'static str {
         match self {
             PathStyle::Unix => "/",
             PathStyle::Windows => "\\",
