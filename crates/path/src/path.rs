@@ -17,7 +17,7 @@ use std::{
 #[cfg(windows)]
 use tendril::fmt::{Format, WTF8};
 
-use crate::path_component::{Component, Components, Prefix, PrefixExt, iter_after};
+use crate::path_component::{Component, Components, PathBufExt, Prefix, PrefixExt, iter_after};
 use crate::rel_path::{RelPath, StripPrefixError};
 
 pub mod abs_path;
@@ -159,6 +159,13 @@ impl PathStyle {
             .join(left, right_string)
             .ok_or_else(|| anyhow::anyhow!("Path must be relative: {right:?}"))?;
         Ok(PathBuf::from(self.normalize(&joined)))
+    }
+
+    /// Adapted from `std::path::Path::join`
+    pub fn join_path_buf(self, left: impl AsRef<Path>, right: impl AsRef<Path>) -> PathBuf {
+        let mut buf = left.as_ref().to_path_buf();
+        buf.styled_push(right, self);
+        buf
     }
 
     pub fn join_path_preserving_components(
@@ -442,6 +449,157 @@ mod tests {
             windows_path.to_string_lossy(),
             r"C:\Users\user\symlink\..\worktrees"
         );
+    }
+
+    #[test]
+    fn test_join_path_buf() {
+        let cases = [
+            (PathStyle::Unix, "/etc", "passwd", "/etc/passwd"),
+            (PathStyle::Unix, "/etc", "/bin/sh", "/bin/sh"),
+            (
+                PathStyle::Unix,
+                "/home/user/",
+                "../dev",
+                "/home/user/../dev",
+            ),
+            (PathStyle::Windows, r"C:\Users", "dev", r"C:\Users\dev"),
+            (PathStyle::Windows, "C:/Users/", "dev", "C:/Users/dev"),
+            (PathStyle::Windows, "C:", "dev", "C:dev"),
+            (PathStyle::Windows, r"C:\a", r"\b", r"C:\b"),
+            (PathStyle::Windows, r"C:\a", "D:b", "D:b"),
+            (PathStyle::Windows, r"\\?\C:\a", r"..\b", r"\\?\C:\b"),
+        ];
+
+        for (path_style, base, path, expected) in cases {
+            assert_eq!(
+                path_style.join_path_buf(base, path).to_str(),
+                Some(expected),
+                "{path_style:?}: joining {path:?} onto {base:?}"
+            );
+        }
+    }
+
+    // Cases ported from `test_push` in rust-lang/rust's `library/std/tests/path.rs`.
+    #[test]
+    fn test_unix_path_style_styled_push() {
+        let unix_cases = [
+            ("", "foo", "foo"),
+            ("foo", "bar", "foo/bar"),
+            ("foo/", "bar", "foo/bar"),
+            ("foo//", "bar", "foo//bar"),
+            ("foo/.", "bar", "foo/./bar"),
+            ("foo./.", "bar", "foo././bar"),
+            ("foo", "", "foo/"),
+            ("foo", ".", "foo/."),
+            ("foo", "..", "foo/.."),
+            ("foo", "/", "/"),
+            ("/foo/bar", "/", "/"),
+            ("/foo/bar", "/baz", "/baz"),
+            ("/foo/bar", "./baz", "/foo/bar/./baz"),
+            // Windows syntax has no special meaning in Unix style.
+            ("foo", r"\bar", r"foo/\bar"),
+            ("c:", "windows", "c:/windows"),
+            (r"C:\a", r"D:\b", r"C:\a/D:\b"),
+        ];
+
+        for (path, push, expected) in unix_cases {
+            let mut actual = PathBuf::from(path);
+            actual.styled_push(push, PathStyle::Unix);
+            assert_eq!(
+                actual.to_str(),
+                Some(expected),
+                "pushing {push:?} onto {path:?}"
+            );
+        }
+    }
+
+    // Cases ported from `test_push` in rust-lang/rust's `library/std/tests/path.rs`.
+    #[test]
+    fn test_windows_path_style_styled_push() {
+        let windows_cases = [
+            ("", "foo", "foo"),
+            ("foo", "bar", r"foo\bar"),
+            ("foo/", "bar", r"foo/bar"),
+            (r"foo\", "bar", r"foo\bar"),
+            ("foo//", "bar", r"foo//bar"),
+            (r"foo\\", "bar", r"foo\\bar"),
+            ("foo/.", "bar", r"foo/.\bar"),
+            ("foo./.", "bar", r"foo./.\bar"),
+            (r"foo\.", "bar", r"foo\.\bar"),
+            (r"foo.\.", "bar", r"foo.\.\bar"),
+            ("foo", "", "foo\\"),
+            ("foo", ".", r"foo\."),
+            ("foo", "..", r"foo\.."),
+            ("foo", "/", "/"),
+            ("foo", r"\", r"\"),
+            ("/foo/bar", "/", "/"),
+            (r"\foo\bar", r"\", r"\"),
+            ("/foo/bar", "/baz", "/baz"),
+            ("/foo/bar", r"\baz", r"\baz"),
+            ("/foo/bar", "./baz", r"/foo/bar\./baz"),
+            ("/foo/bar", r".\baz", r"/foo/bar\.\baz"),
+            ("c:\\", "windows", "c:\\windows"),
+            ("c:", "windows", "c:windows"),
+            ("a\\b\\c", "d", "a\\b\\c\\d"),
+            ("\\a\\b\\c", "d", "\\a\\b\\c\\d"),
+            ("a\\b", "c\\d", "a\\b\\c\\d"),
+            ("a\\b", "\\c\\d", "\\c\\d"),
+            ("a\\b", ".", "a\\b\\."),
+            ("a\\b", "..\\c", "a\\b\\..\\c"),
+            ("a\\b", "C:a.txt", "C:a.txt"),
+            ("a\\b", "C:\\a.txt", "C:\\a.txt"),
+            ("C:\\a", "C:\\b.txt", "C:\\b.txt"),
+            ("C:\\a\\b\\c", "C:d", "C:d"),
+            ("C:a\\b\\c", "C:d", "C:d"),
+            ("C:", r"a\b\c", r"C:a\b\c"),
+            ("C:", r"..\a", r"C:..\a"),
+            (
+                "\\\\server\\share\\foo",
+                "bar",
+                "\\\\server\\share\\foo\\bar",
+            ),
+            ("\\\\server\\share\\foo", "C:baz", "C:baz"),
+            ("\\\\?\\C:\\a\\b", "C:c\\d", "C:c\\d"),
+            ("\\\\?\\C:a\\b", "C:c\\d", "C:c\\d"),
+            ("\\\\?\\C:\\a\\b", "C:\\c\\d", "C:\\c\\d"),
+            ("\\\\?\\foo\\bar", "baz", "\\\\?\\foo\\bar\\baz"),
+            (
+                "\\\\?\\UNC\\server\\share\\foo",
+                "bar",
+                "\\\\?\\UNC\\server\\share\\foo\\bar",
+            ),
+            ("\\\\?\\UNC\\server\\share", "C:\\a", "C:\\a"),
+            ("\\\\?\\UNC\\server\\share", "C:a", "C:a"),
+            ("\\\\?\\UNC\\server", "foo", "\\\\?\\UNC\\server\\foo"),
+            (
+                "C:\\a",
+                "\\\\?\\UNC\\server\\share",
+                "\\\\?\\UNC\\server\\share",
+            ),
+            ("\\\\.\\foo\\bar", "baz", "\\\\.\\foo\\bar\\baz"),
+            ("\\\\.\\foo\\bar", "C:a", "C:a"),
+            ("\\\\.\\foo", "..\\bar", "\\\\.\\foo\\..\\bar"),
+            ("\\\\?\\C:", "foo", "\\\\?\\C:\\foo"),
+            (r"\\?\C:\bar", "../foo", r"\\?\C:\foo"),
+            (r"\\?\C:\bar", "../../foo", r"\\?\C:\foo"),
+            (r"\\?\C:\", "../foo", r"\\?\C:\foo"),
+            (r"\\?\C:", r"D:\foo/./", r"D:\foo/./"),
+            (r"\\?\C:", r"\\?\D:\foo\.\", r"\\?\D:\foo\.\"),
+            (r"\\?\A:\x\y", "/foo", r"\\?\A:\foo"),
+            (r"\\?\A:", r"..\foo\.", r"\\?\A:\foo"),
+            (r"\\?\A:\x\y", r".\foo\.", r"\\?\A:\x\y\foo"),
+            (r"\\?\A:\x\y", r"", r"\\?\A:\x\y\"),
+        ];
+
+        for (path, push, expected) in windows_cases {
+            let mut actual = PathBuf::from(path);
+            actual.styled_push(push, PathStyle::Windows);
+            assert_eq!(
+                actual.to_str(),
+                Some(expected),
+                "pushing {push:?} onto {path:?}"
+            );
+        }
     }
 
     #[test]
