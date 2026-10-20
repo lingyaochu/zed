@@ -806,8 +806,21 @@ impl PickerDelegate for WorktreePickerDelegate {
         let has_named_worktree = self.all_worktrees.iter().any(|worktree| {
             worktree.directory_name(worktree_name_anchor.as_deref()) == normalized_query
         });
+        let invalid_name_reason = self
+            .project
+            .read(cx)
+            .active_repository(cx)
+            .and_then(|repository| {
+                repository
+                    .read(cx)
+                    .validate_worktree_name(&normalized_query)
+                    .err()
+            })
+            .map(|error| error.to_string());
         let create_named_disabled_reason: Option<String> = if self.has_multiple_repositories {
             Some("Cannot create a named worktree in a project with multiple repositories".into())
+        } else if let Some(reason) = invalid_name_reason {
+            Some(reason)
         } else if has_named_worktree {
             Some("A worktree with this name already exists".into())
         } else {
@@ -1913,6 +1926,49 @@ mod tests {
                     _ => panic!("named worktree creation should prefer the remote default branch"),
                 })
         });
+    }
+
+    #[gpui::test]
+    async fn test_create_named_worktree_is_disabled_for_invalid_name(cx: &mut TestAppContext) {
+        let (_fs, worktree_picker, _repository, _worktree_path, mut cx) =
+            init_worktree_picker_test(cx).await;
+
+        for (query, should_be_disabled) in [("feature", false), ("feature/nested", true)] {
+            let update_matches =
+                worktree_picker.update_in(&mut cx, |worktree_picker, window, cx| {
+                    worktree_picker.picker.update(cx, |picker, cx| {
+                        picker
+                            .delegate
+                            .update_matches(query.to_string(), window, cx)
+                    })
+                });
+            update_matches.await;
+            cx.run_until_parked();
+
+            worktree_picker.update(&mut cx, |worktree_picker, cx| {
+                worktree_picker.picker.update(cx, |picker, _| {
+                    let disabled_reason =
+                        picker
+                            .delegate
+                            .matches
+                            .iter()
+                            .find_map(|entry| match entry {
+                                WorktreeEntry::CreateNamed {
+                                    disabled_reason, ..
+                                } => Some(disabled_reason.clone()),
+                                _ => None,
+                            });
+                    let Some(disabled_reason) = disabled_reason else {
+                        panic!("expected a named worktree creation entry for {query:?}");
+                    };
+                    assert_eq!(
+                        disabled_reason.is_some(),
+                        should_be_disabled,
+                        "unexpected disabled reason for {query:?}: {disabled_reason:?}"
+                    );
+                })
+            });
+        }
     }
 
     #[gpui::test]

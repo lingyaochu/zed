@@ -6327,6 +6327,17 @@ impl RepositorySnapshot {
             .unwrap_or(self.common_dir_abs_path.as_ref())
     }
 
+    /// Checks that `worktree_name` is a single path component, so the new
+    /// worktree stays inside the managed worktree directory and its displayed
+    /// name matches the name it was created with.
+    pub fn validate_worktree_name(&self, worktree_name: &str) -> Result<()> {
+        let worktree_name = Path::new(worktree_name);
+        if self.path_style.file_name(worktree_name) != Some(worktree_name.as_os_str()) {
+            anyhow::bail!("Worktree name must be a single directory name without path separators");
+        }
+        Ok(())
+    }
+
     /// Computes the path where a new linked worktree for this repository
     /// would be created, based on the `git.worktree_directory` setting.
     pub fn path_for_new_linked_worktree(
@@ -6334,13 +6345,9 @@ impl RepositorySnapshot {
         worktree_name: &str,
         worktree_directory_setting: &str,
     ) -> Result<PathBuf> {
+        self.validate_worktree_name(worktree_name)
+            .with_context(|| format!("invalid worktree name {worktree_name:?}"))?;
         let worktree_name = Path::new(worktree_name);
-        if self.path_style.file_name(worktree_name) != Some(worktree_name.as_os_str()) {
-            anyhow::bail!(
-                "worktree name must be a single path component, got {:?}",
-                worktree_name
-            )
-        }
         let repository_anchor = self.linked_worktree_anchor_path();
         let project_name = self
             .path_style

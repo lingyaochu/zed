@@ -84,7 +84,8 @@ pub struct CreateThreadToolInput {
     #[serde(default)]
     pub use_new_worktree: bool,
 
-    /// Optional name for the new worktree directory. When omitted, the
+    /// Optional name for the new worktree directory. Must be a single
+    /// directory name without path separators. When omitted, the
     /// editor generates a random non-colliding name (matching the
     /// manual "Create worktree" UI behavior). Only used when
     /// `use_new_worktree` is true.

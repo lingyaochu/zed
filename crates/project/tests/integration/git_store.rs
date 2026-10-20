@@ -1557,16 +1557,15 @@ mod git_worktrees {
         });
         let worktree_path = repository.read_with(cx, |repository, _| {
             repository
-                .path_for_new_linked_worktree("feature/nested", "../worktrees")
+                .path_for_new_linked_worktree("feature", "../worktrees")
                 .unwrap()
         });
-        let worktree_parent = PathBuf::from(path!("/worktrees/zed/feature/nested"));
-        let worktree_intermediate_parent = PathBuf::from(path!("/worktrees/zed/feature"));
+        let worktree_parent = PathBuf::from(path!("/worktrees/zed/feature"));
         let worktree_base = PathBuf::from(path!("/worktrees/zed"));
 
         assert_eq!(
             worktree_path,
-            PathBuf::from(path!("/worktrees/zed/feature/nested/zed"))
+            PathBuf::from(path!("/worktrees/zed/feature/zed"))
         );
 
         cx.update(|cx| {
@@ -1586,7 +1585,6 @@ mod git_worktrees {
 
         assert!(Fs::is_dir(fs.as_ref(), &worktree_path).await);
         assert!(Fs::is_dir(fs.as_ref(), &worktree_parent).await);
-        assert!(Fs::is_dir(fs.as_ref(), &worktree_intermediate_parent).await);
         assert!(Fs::is_dir(fs.as_ref(), &worktree_base).await);
 
         cx.update(|cx| {
@@ -1602,7 +1600,6 @@ mod git_worktrees {
 
         assert!(!Fs::is_dir(fs.as_ref(), &worktree_path).await);
         assert!(!Fs::is_dir(fs.as_ref(), &worktree_parent).await);
-        assert!(!Fs::is_dir(fs.as_ref(), &worktree_intermediate_parent).await);
         assert!(Fs::is_dir(fs.as_ref(), &worktree_base).await);
     }
 
