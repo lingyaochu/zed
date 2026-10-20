@@ -6334,6 +6334,13 @@ impl RepositorySnapshot {
         worktree_name: &str,
         worktree_directory_setting: &str,
     ) -> Result<PathBuf> {
+        let worktree_name = Path::new(worktree_name);
+        if self.path_style.file_name(worktree_name) != Some(worktree_name.as_os_str()) {
+            anyhow::bail!(
+                "worktree name must be a single path component, got {:?}",
+                worktree_name
+            )
+        }
         let repository_anchor = self.linked_worktree_anchor_path();
         let project_name = self
             .path_style
@@ -12368,6 +12375,60 @@ mod tests {
             path,
             PathBuf::from(r"C:\Users\user\dev\worktrees\lsp-tests\nimble-sky\lsp-tests")
         );
+    }
+
+    #[test]
+    fn test_worktree_creation_rejects_invalid_worktree_name() {
+        let snapshot_unix = RepositorySnapshot::empty(
+            RepositoryId(0),
+            Path::new(r"/home/user/test").into(),
+            None,
+            None,
+            None,
+            PathStyle::Unix,
+        );
+        let invalid_worktree_name_unix = [
+            "/worktree",
+            "work/tree",
+            "../worktree",
+            "worktree/",
+            "./worktree",
+        ];
+        for name in invalid_worktree_name_unix {
+            assert!(
+                snapshot_unix
+                    .path_for_new_linked_worktree(name, "../worktrees")
+                    .is_err()
+            );
+        }
+
+        let snapshot_windows = RepositorySnapshot::empty(
+            RepositoryId(0),
+            Path::new(r"C:/User/test").into(),
+            None,
+            None,
+            None,
+            PathStyle::Windows,
+        );
+        let invalid_worktree_name_windows = [
+            r"\worktree",
+            "/worktree",
+            "work/tree",
+            r"work\tree",
+            "../worktree",
+            r"..\worktree",
+            "worktree/",
+            r"worktree\",
+            r"./worktree",
+            r".\worktree",
+        ];
+        for name in invalid_worktree_name_windows {
+            assert!(
+                snapshot_windows
+                    .path_for_new_linked_worktree(name, "../worktrees")
+                    .is_err()
+            );
+        }
     }
 
     #[test]
